@@ -1,3 +1,6 @@
 [workspace]
 members = ["libresy", "resy-reserver", "resy-searcher"]
 resolver = "2"
+
+[workspace.package]
+authors = ["Daron Arakelian"]
