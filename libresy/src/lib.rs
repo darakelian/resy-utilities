@@ -1,7 +1,8 @@
 use std::str::FromStr;
 
-use reqwest::Client;
-use resy_data::{GeoFilter, RestaurantCityConfig, RestaurantSearchParams, RestaurantSearchResult};
+use reqwest::{header::{HeaderMap, HeaderValue, AUTHORIZATION}, Client};
+use resy_data::{ReservationDetailsRequest, ReservationDetails, GeoFilter, ReservationSlot, RestaurantCityConfig, RestaurantSearchRequest, RestaurantSearchResult};
+use serde::de::value;
 
 mod resy_data;
 
@@ -9,8 +10,14 @@ mod resy_data;
 static RESY_LOCATION_BASE: &str = "https://api.resy.com/3/location";
 /// URL path to fetch the location config data
 static RESY_CONFIG_URL: &str = "/config";
+/// Base URL for venue search queries
 static RESY_VENUESEARCH_BASE: &str = "https://api.resy.com/3/venuesearch";
 static RESY_VENUESEARCH_SEARCH: &str = "/search";
+
+static RESY_FIND_URL: &str = "https://api.resy.com/4/find";
+
+/// URL to get reservation details
+static RESY_DETAILS_URL: &str = "https://api.resy.com/3/details";
 
 static RESY_AUTH_TOKEN_HEADER: &str = "X-Resy-Auth-Token";
 
@@ -60,11 +67,9 @@ impl ResyClient {
     /// to only have one restaurant in the given city.
     pub async fn find_restaurant(&self, city_config: &RestaurantCityConfig, name: &String) -> anyhow::Result<Option<RestaurantSearchResult>> {
         let geo_filter = GeoFilter::new(city_config.latitude, city_config.longitude, u16::MAX);
-        let restaurant_search_params = RestaurantSearchParams::new(false, &geo_filter, name);
+        let restaurant_search_params = RestaurantSearchRequest::new(false, &geo_filter, name);
         
         let res = self.client.post(format!("{}{}", RESY_VENUESEARCH_BASE, RESY_VENUESEARCH_SEARCH))
-            .header(RESY_AUTH_TOKEN_HEADER, &self.auth_key)
-            .header("Authorization", format!("ResyAPI api_key=\"{}\"", self.api_key))
             .json(&restaurant_search_params)
             .send()
             .await?;
@@ -73,6 +78,35 @@ impl ResyClient {
         let value = serde_json::Value::from_str(&text).unwrap();
         let hits: Vec<RestaurantSearchResult> = serde_json::from_value::<Vec<RestaurantSearchResult>>(value["search"]["hits"].clone()).unwrap();
         Ok(hits.first().cloned())
+    }
+
+    /// Gets reservations for a given restaurant. Empty vec means no time slots on
+    /// the given date were found.
+    pub async fn get_reservations(&self, restaurant_id: &String, date: &String, party_size: u8) -> anyhow::Result<Vec<ReservationSlot>> {
+        let res = self.client.get(RESY_FIND_URL)
+            .query(&[("lat", "0")])
+            .query(&[("long", "0")])
+            .query(&[("venue_id", restaurant_id)])
+            .query(&[("date", date)])
+            .query(&[("party_size", &party_size.to_string())])
+            .send()
+            .await?;
+        let text = res.text().await?;
+        let value = serde_json::Value::from_str(&text).unwrap();
+        let slots = serde_json::from_value(value["venues"][0]["slots"].clone()).unwrap();
+        Ok(slots)
+    }
+
+    /// Retrieves the reservation details for a slot.
+    pub async fn get_reservation_details(&self, reservation_slot: &ReservationSlot, date: &String, party_size: u8) -> anyhow::Result<ReservationDetails> {
+        let details_request = ReservationDetailsRequest::new(reservation_slot.config.token.clone(), date.clone(), party_size.to_string());
+        let res: ReservationDetails = self.client.post(RESY_DETAILS_URL)
+            .json(&details_request)
+            .send()
+            .await?
+            .json()
+            .await?;
+        Ok(res)
     }
 }
 
@@ -85,43 +119,44 @@ pub struct ResyClientBuilder {
 }
 
 impl ResyClientBuilder {
-    pub fn new() -> ResyClientBuilder {
+    pub fn new(api_key: String, auth_key: String) -> ResyClientBuilder {
         ResyClientBuilder {
-            api_key: String::from(""),
-            auth_key: String::from(""),
+            api_key: api_key,
+            auth_key: auth_key,
             no_cache: false,
             strict_match: false
         }
     }
 
-    pub fn api_key(mut self, api_key: String) -> ResyClientBuilder {
-        self.api_key = api_key;
+    pub fn no_cache(mut self) -> ResyClientBuilder {
+        self.no_cache = true;
         self
     }
 
-    pub fn auth_key(mut self, auth_key: String) ->  ResyClientBuilder {
-        self.auth_key = auth_key;
-        self
-    }
-
-    pub fn no_cache(mut self, no_cache: bool) -> ResyClientBuilder {
-        self.no_cache = no_cache;
-        self
-    }
-
-    pub fn strict_match(mut self, strict_match: bool) -> ResyClientBuilder {
-        self.strict_match = strict_match;
+    pub fn strict_match(mut self) -> ResyClientBuilder {
+        self.strict_match = true;
         self
     }
 
     pub fn build(self) -> ResyClient {
+        let mut headers = HeaderMap::new();
+        
+        let mut api_header = HeaderValue::from_str(&format!("ResyAPI api_key=\"{}\"", self.api_key)).expect("Key invalid HTTP header value");
+        api_header.set_sensitive(true);
+        
+        let mut auth_key_header = HeaderValue::from_str(&self.auth_key).expect("Key invalid HTTP header value");
+        auth_key_header.set_sensitive(true);
+
+        headers.insert(AUTHORIZATION, api_header);
+        headers.insert(RESY_AUTH_TOKEN_HEADER, auth_key_header);
+
         ResyClient {
             api_key: self.api_key,
             auth_key: self.auth_key,
             no_cache: self.no_cache,
             strict_match: self.strict_match,
-            client: Client::new(),
-             restaurants: Vec::<RestaurantCityConfig>::new()
+            client: Client::builder().default_headers(headers).build().expect("Unable to construct HTTP client"),
+            restaurants: Vec::<RestaurantCityConfig>::new()
         }
     }
 }

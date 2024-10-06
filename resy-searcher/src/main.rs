@@ -30,11 +30,16 @@ struct Cli {
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
-    let mut resy_client = ResyClientBuilder::new()
-        .api_key(cli.api_key)
-        .auth_key(cli.auth_token)
-        .no_cache(cli.no_cache)
-        .build();
+    let mut builder = ResyClientBuilder::new(cli.api_key, cli.auth_token);
+    if cli.no_cache {
+        builder = builder.no_cache();
+    }
+    if cli.strict_match {
+        builder = builder.strict_match();
+    }
+
+    let mut resy_client = builder.build();
+    
 
     resy_client.load_config().await?;
 
