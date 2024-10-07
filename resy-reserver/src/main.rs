@@ -1,5 +1,5 @@
 use anyhow::anyhow;
-use chrono::{Datelike, NaiveDate, NaiveTime};
+use chrono::{NaiveDate, NaiveTime};
 use clap::{builder::PossibleValue, command, Parser, Subcommand, ValueEnum};
 use libresy::{ResyClient, ResyClientBuilder};
 
@@ -108,7 +108,7 @@ fn get_default_date(provided_date: Option<String>) -> NaiveDate {
 /// user hasn't provided a preference, this will always return true.
 fn table_type_matches(slot_type: &String, requested_table_type: &Option<String>) -> bool {
     match requested_table_type {
-        Some(r) => r.eq_ignore_ascii_case(&slot_type),
+        Some(r) => r.eq_ignore_ascii_case(slot_type),
         None => true,
     }
 }
@@ -125,7 +125,7 @@ async fn attempt_reservation(
     let reservations = resy_client
         .get_reservations(restaurant_id, date, party_size)
         .await?;
-    if reservations.len() == 0 {
+    if reservations.is_empty() {
         return Err(anyhow!(
             "No reservations exist at the restaurant for the given date and party size"
         ));
@@ -133,11 +133,10 @@ async fn attempt_reservation(
     // Find a reservation that matches the time requested
     let matching_reservation = reservations
         .iter()
-        .filter(|&reservation_slot| {
+        .find(|&reservation_slot| {
             reservation_slot.date.to_datetime().time() == *time
                 && table_type_matches(&reservation_slot.config.slot_type, table_type)
         })
-        .next()
         .expect("No reservations were found for the given time. Try a new time?");
 
     // Get the reservation details to book. For now, let's assume if we got a reservation slot
