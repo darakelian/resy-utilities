@@ -117,7 +117,7 @@ async fn attempt_reservation(
     resy_client: &ResyClient,
     restaurant_id: &String,
     date: &NaiveDate,
-    time: NaiveTime,
+    time: &NaiveTime,
     party_size: u8,
     table_type: &Option<String>,
 ) -> anyhow::Result<()> {
@@ -134,7 +134,7 @@ async fn attempt_reservation(
     let matching_reservation = reservations
         .iter()
         .filter(|&reservation_slot| {
-            reservation_slot.date.to_datetime().time() == time
+            reservation_slot.date.to_datetime().time() == *time
                 && table_type_matches(&reservation_slot.config.slot_type, table_type)
         })
         .next()
@@ -181,7 +181,7 @@ async fn main() -> anyhow::Result<()> {
                 &resy_client,
                 &cli.restaurant_id,
                 &date,
-                NaiveTime::parse_from_str(&cli.time, "%H:%M").unwrap(),
+                &NaiveTime::parse_from_str(&cli.time, "%H:%M").unwrap(),
                 cli.party_size,
                 &cli.table_type,
             )
