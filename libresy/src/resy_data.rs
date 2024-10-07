@@ -1,3 +1,4 @@
+use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Clone)]
@@ -78,9 +79,15 @@ pub struct RestaurantSearchResult {
 }
 
 #[derive(Debug, Deserialize, Clone)]
-struct ReservationSlotDate {
-    start: String,
-    end: String,
+pub struct ReservationSlotDate {
+    pub start: String,
+}
+
+impl ReservationSlotDate {
+    pub fn to_datetime(&self) -> NaiveDateTime {
+        NaiveDateTime::parse_from_str(&self.start, "%Y-%m-%d %H:%M:%S")
+            .expect("Invalid time received from Resy")
+    }
 }
 
 /// Contains the useful information to actually book a reservation.
@@ -98,7 +105,7 @@ pub struct ReservationSlotConfig {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct ReservationSlot {
-    date: ReservationSlotDate,
+    pub date: ReservationSlotDate,
     pub config: ReservationSlotConfig,
 }
 
@@ -122,8 +129,8 @@ impl ReservationDetailsRequest {
 }
 
 #[derive(Debug, Deserialize, Clone)]
-struct PaymentMethod {
-    id: String,
+pub struct PaymentMethod {
+    pub id: u32,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -132,34 +139,30 @@ struct DetailsUser {
 }
 
 #[derive(Debug, Deserialize, Clone)]
-struct BookToken {
+pub struct BookToken {
     date_expires: String,
-    value: String,
+    pub value: String,
 }
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct ReservationDetails {
     user: DetailsUser,
-    book_token: BookToken,
+    pub book_token: BookToken,
 }
 
 impl ReservationDetails {
     /// Tries to get the first payment ID a user has. A user is not guaranteed to
     /// have any payment methods on file.
-    pub fn get_payment_id(&self) -> Option<String> {
+    pub fn get_payment_id(&self) -> Option<PaymentMethod> {
         match self.user.payment_methods.first() {
-            Some(p) => Some(p.id.clone()),
+            Some(p) => Some(p.clone()),
             None => None,
         }
     }
-
-    pub fn get_booking_token(&self) -> &String {
-        &self.book_token.value
-    }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-pub struct BookingRequest {
+#[derive(Debug, Deserialize)]
+pub struct Booking {
     resy_token: String,
     reservation_id: u32,
     venue_opt_in: bool,

@@ -586,6 +586,7 @@ name = "libresy"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "reqwest",
  "serde",
  "serde_json",
@@ -860,6 +861,14 @@ dependencies = [
 [[package]]
 name = "resy-reserver"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap",
+ "clap-verbosity-flag",
+ "libresy",
+ "tokio",
+]
 
 [[package]]
 name = "resy-searcher"

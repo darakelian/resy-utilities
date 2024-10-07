@@ -1,7 +1,5 @@
-use std::{error::Error, path::PathBuf};
-
 use anyhow::anyhow;
-use chrono::{DateTime, Datelike};
+use chrono::{DateTime, Datelike, NaiveDate};
 use clap::{CommandFactory, Parser};
 use libresy::ResyClientBuilder;
 
@@ -22,9 +20,9 @@ struct Cli {
     auth_token: String,
     #[arg(long, env, action)]
     no_cache: bool,
-    #[arg(short, long, env, action)]
-    /// If enabled, search names must match exactly
-    strict_match: bool,
+    #[arg(long, env, action)]
+    /// If enabled, will display info about the restaurant then exit.
+    info_only: bool,
     /// Size of party to find tables for.
     #[arg(short, long, env, default_value_t = 2)]
     party_size: u8,
@@ -34,27 +32,18 @@ struct Cli {
 
 /// Normalizes the date from YYYYMMDD to YYYY-MM-DD for Resy requests. Will use
 /// today's date if the user did not provide one.
-fn get_default_date(provided_date: Option<String>) -> String {
+fn get_default_date(provided_date: Option<String>) -> NaiveDate {
     match provided_date {
         Some(p) => {
             // Try to parse using our format of YYYYMMDD, if it fails, user entered
             // the wrong date format
-            let dt = DateTime::parse_from_str(&p, "%Y%M%d")
-                .expect("ERROR: Date must be in YYYYMMDD format!");
-            // Convert to YYYY-MM-DD format
-            format!("{}-{:0>2}-{:0>2}", dt.year(), dt.month(), dt.day())
+            NaiveDate::parse_from_str(&p, "%Y%m%d")
+                .expect("ERROR: Date must be in YYYYMMDD format!")
         }
-        None => {
-            let current_date = chrono::Local::now();
-            format!(
-                "{}-{:0>2}-{:0>2}",
-                current_date.year(),
-                current_date.month(),
-                current_date.day()
-            )
-        }
+        None => chrono::Local::now().date_naive(),
     }
 }
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
@@ -68,13 +57,7 @@ async fn main() -> anyhow::Result<()> {
 
     let date = get_default_date(cli.date);
 
-    let mut builder = ResyClientBuilder::new(cli.api_key, cli.auth_token);
-    if cli.no_cache {
-        builder = builder.no_cache();
-    }
-    if cli.strict_match {
-        builder = builder.strict_match();
-    }
+    let builder = ResyClientBuilder::new(cli.api_key, cli.auth_token);
 
     let mut resy_client = builder.build();
 
@@ -94,10 +77,14 @@ async fn main() -> anyhow::Result<()> {
 
     // After we have the city, lets try to find the restaurant
     let restaurant = resy_client
-        .find_restaurant(&city_config, &restaurant_name)
+        .find_restaurant_by_name(&city_config, &restaurant_name)
         .await?;
     match restaurant {
         Some(r) => {
+            if cli.info_only {
+                println!("Restaurant Name: {}, Resy ID: {}", r.name, r.object_id);
+                return Ok(());
+            }
             let reservations = resy_client
                 .get_reservations(&r.object_id, &date, cli.party_size)
                 .await?;

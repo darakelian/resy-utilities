@@ -1,12 +1,13 @@
-use std::str::FromStr;
+use std::{collections::HashMap, str::FromStr};
 
+use chrono::NaiveDate;
 use reqwest::{
     header::{HeaderMap, HeaderValue, AUTHORIZATION},
     Client,
 };
 use resy_data::{
-    GeoFilter, ReservationDetails, ReservationDetailsRequest, ReservationSlot,
-    RestaurantCityConfig, RestaurantSearchRequest, RestaurantSearchResult,
+    BookToken, Booking, GeoFilter, PaymentMethod, ReservationDetails, ReservationDetailsRequest,
+    ReservationSlot, RestaurantCityConfig, RestaurantSearchRequest, RestaurantSearchResult,
 };
 use serde::de::value;
 
@@ -28,14 +29,18 @@ static RESY_FIND_URL: &str = "https://api.resy.com/4/find";
 /// URL to get reservation details
 static RESY_DETAILS_URL: &str = "https://api.resy.com/3/details";
 
+/// URL to book at
+static RESY_BOOK_URL: &str = "https://api.resy.com/3/book";
+
 static RESY_AUTH_TOKEN_HEADER: &str = "X-Resy-Auth-Token";
+
+/// Date format Resy uses for sending/receiving dates in their objects.
+static RESY_DATE_FORMAT: &str = "%Y-%m-%d";
 
 /// Client used for interacting with Resy. Under the hood, maintains
 /// a reqwst client
 #[derive(Debug)]
 pub struct ResyClient {
-    api_key: String,
-    auth_key: String,
     no_cache: bool,
     strict_match: bool,
     client: Client,
@@ -80,7 +85,7 @@ impl ResyClient {
 
     /// Tries to get the restaurant. Assumes the restaurant name provided is unique
     /// to only have one restaurant in the given city.
-    pub async fn find_restaurant(
+    pub async fn find_restaurant_by_name(
         &self,
         city_config: &RestaurantCityConfig,
         name: &String,
@@ -111,7 +116,7 @@ impl ResyClient {
     pub async fn get_reservations(
         &self,
         restaurant_id: &String,
-        date: &String,
+        date: &NaiveDate,
         party_size: u8,
     ) -> anyhow::Result<Vec<ReservationSlot>> {
         let res = self
@@ -120,7 +125,7 @@ impl ResyClient {
             .query(&[("lat", "0")])
             .query(&[("long", "0")])
             .query(&[("venue_id", restaurant_id)])
-            .query(&[("day", date)])
+            .query(&[("day", date.format(RESY_DATE_FORMAT).to_string())])
             .query(&[("party_size", &party_size.to_string())])
             .send()
             .await?;
@@ -135,18 +140,46 @@ impl ResyClient {
     pub async fn get_reservation_details(
         &self,
         reservation_slot: &ReservationSlot,
-        date: &String,
+        date: &NaiveDate,
         party_size: u8,
     ) -> anyhow::Result<ReservationDetails> {
         let details_request = ReservationDetailsRequest::new(
             reservation_slot.config.token.clone(),
-            date.clone(),
+            date.format(RESY_DATE_FORMAT).to_string(),
             party_size.to_string(),
         );
-        let res: ReservationDetails = self
+        let res = self
             .client
             .post(RESY_DETAILS_URL)
             .json(&details_request)
+            .send()
+            .await?
+            .json()
+            .await?;
+        Ok(res)
+    }
+
+    /// Makes a booking request with Resy using the book token and payment method.
+    /// TODO: Investigate ways this can actually fail
+    pub async fn book_restaurant(
+        &self,
+        book_token: &BookToken,
+        payment: &PaymentMethod,
+    ) -> anyhow::Result<Booking> {
+        // Build the form data for the booking request
+        let mut params = HashMap::new();
+        params.insert("book_token", book_token.value.clone());
+        params.insert(
+            "struct_payment_method",
+            format!("{{\"id\":{}}}", payment.id),
+        );
+        params.insert("venute_marketing_opt_in", "0".to_string());
+        params.insert("source_id", "resy.com-venue-details".to_string());
+
+        let res = self
+            .client
+            .post(RESY_BOOK_URL)
+            .form(&params)
             .send()
             .await?
             .json()
@@ -200,8 +233,6 @@ impl ResyClientBuilder {
         headers.insert("User-Agent", HeaderValue::from_static(&USER_AGENT));
 
         ResyClient {
-            api_key: self.api_key,
-            auth_key: self.auth_key,
             no_cache: self.no_cache,
             strict_match: self.strict_match,
             client: Client::builder()
