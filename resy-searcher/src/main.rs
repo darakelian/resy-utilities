@@ -89,6 +89,7 @@ async fn main() -> anyhow::Result<()> {
                 .get_reservations(&r.object_id, &date, cli.party_size)
                 .await?;
             if reservations.len() > 0 {
+                println!("Found the following reservations at {} (Resy ID = {})", r.name, r.object_id);
                 // Print the reservations
                 for reservation in reservations.iter() {
                     println!("{:?}", reservation);
