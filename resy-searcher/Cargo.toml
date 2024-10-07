@@ -3,7 +3,7 @@ name = "resy-searcher"
 authors.workspace = true
 version = "0.1.0"
 edition = "2021"
-description = "CLI tool to find Resy restaurant IDs"
+description = "CLI tool to find reservations at a restaurant on Resy"
 
 [dependencies]
 libresy = { path = "../libresy" }
@@ -11,3 +11,4 @@ clap = { version = "4.5.19", features = ["derive", "env"] }
 clap-verbosity-flag = "2.2.2"
 tokio = { version = "1.40.0", features = ["full"] }
 anyhow = "1.0.89"
+chrono = "0.4.38"
