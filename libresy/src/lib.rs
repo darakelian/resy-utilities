@@ -11,7 +11,7 @@ use resy_data::{
 };
 use serde::de::value;
 
-mod resy_data;
+pub mod resy_data;
 
 /// Resy apparently checks if the user-agent is a "browser" agent so let's pretend to be Firefox
 static USER_AGENT: &str =
@@ -176,15 +176,12 @@ impl ResyClient {
         params.insert("venute_marketing_opt_in", "0".to_string());
         params.insert("source_id", "resy.com-venue-details".to_string());
 
-        let res = self
-            .client
-            .post(RESY_BOOK_URL)
-            .form(&params)
-            .send()
-            .await?
-            .json()
-            .await?;
-        Ok(res)
+        let res = self.client.post(RESY_BOOK_URL).form(&params).send().await;
+
+        match res {
+            Ok(r) => Ok(r.json().await?),
+            Err(e) => Err(e.into()),
+        }
     }
 }
 

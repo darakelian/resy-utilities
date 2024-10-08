@@ -1,6 +1,10 @@
+use std::fmt::Display;
+use std::time::Duration;
+
 use anyhow::anyhow;
 use chrono::{NaiveDate, NaiveTime};
 use clap::{builder::PossibleValue, command, Parser, Subcommand, ValueEnum};
+use libresy::resy_data::{Booking, ReservationSlot};
 use libresy::{ResyClient, ResyClientBuilder};
 
 #[derive(Parser)]
@@ -35,6 +39,9 @@ struct Cli {
     /// value is specified, time will be the deciding factor.
     #[arg(long, env)]
     table_type: Option<String>,
+    /// Determines how to handle matching reservations
+    #[arg(long, env, default_value_t = ReservationTimeMode::Exact)]
+    reservation_time_mode: ReservationTimeMode,
 
     #[command(subcommand)]
     command: Commands,
@@ -48,7 +55,7 @@ struct Cli {
 /// Earlier: Will consider reservations with earlier times (closer times will be preferred.)
 ///
 /// Later: Will consider reservations with later times (closer times will be preferred.)
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 enum ReservationTimeMode {
     Exact,
     Earlier,
@@ -69,6 +76,16 @@ impl ValueEnum for ReservationTimeMode {
     }
 }
 
+impl Display for ReservationTimeMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            Self::Exact => write!(f, "exact"),
+            Self::Earlier => write!(f, "earlier"),
+            Self::Later => write!(f, "later"),
+        }
+    }
+}
+
 #[derive(Subcommand)]
 enum Commands {
     /// Enables one-shot reservation sniping mode. User is responsible for handling
@@ -84,9 +101,6 @@ enum Commands {
         /// Controls how long the program will wait between retry attempts in seconds.
         #[arg(long, env, default_value_t = 1)]
         retry_delay: u16,
-        /// Determines how to handle matching reservations
-        #[arg(long, env)]
-        reservation_time_mode: ReservationTimeMode,
     },
 }
 
@@ -113,6 +127,45 @@ fn table_type_matches(slot_type: &String, requested_table_type: &Option<String>)
     }
 }
 
+/// Finds a reservation that best matches the time and time_mode provided.
+fn get_matching_reservation(
+    reservations: &Vec<ReservationSlot>,
+    time: &NaiveTime,
+    table_type: &Option<String>,
+    time_mode: &ReservationTimeMode,
+) -> Option<ReservationSlot> {
+    match time_mode {
+        ReservationTimeMode::Exact => {
+            return reservations
+                .iter()
+                .find(|&reservation_slot| {
+                    reservation_slot.date.to_datetime().time() == *time
+                        && table_type_matches(&reservation_slot.config.slot_type, table_type)
+                })
+                .cloned();
+        }
+        ReservationTimeMode::Earlier => {
+            return reservations
+                .iter()
+                .filter(|&r| {
+                    r.date.to_datetime().time() <= *time
+                        && table_type_matches(&r.config.slot_type, table_type)
+                })
+                .last()
+                .cloned();
+        }
+        ReservationTimeMode::Later => {
+            return reservations
+                .iter()
+                .find(|&r| {
+                    r.date.to_datetime().time() >= *time
+                        && table_type_matches(&r.config.slot_type, table_type)
+                })
+                .cloned();
+        }
+    }
+}
+
 async fn attempt_reservation(
     resy_client: &ResyClient,
     restaurant_id: &String,
@@ -120,7 +173,8 @@ async fn attempt_reservation(
     time: &NaiveTime,
     party_size: u8,
     table_type: &Option<String>,
-) -> anyhow::Result<()> {
+    time_mode: &ReservationTimeMode,
+) -> anyhow::Result<Booking> {
     // Using the resy_id, get the reservations available
     let reservations = resy_client
         .get_reservations(restaurant_id, date, party_size)
@@ -131,27 +185,30 @@ async fn attempt_reservation(
         ));
     }
     // Find a reservation that matches the time requested
-    let matching_reservation = reservations
-        .iter()
-        .find(|&reservation_slot| {
-            reservation_slot.date.to_datetime().time() == *time
-                && table_type_matches(&reservation_slot.config.slot_type, table_type)
-        })
-        .expect("No reservations were found for the given time. Try a new time?");
-
-    // Get the reservation details to book. For now, let's assume if we got a reservation slot
-    // that this function won't fail.
-    let reservation_details = resy_client
-        .get_reservation_details(matching_reservation, date, party_size)
-        .await?;
-    // This naively also assumes that the reservation will book properly for now.
-    let _ = resy_client
-        .book_restaurant(
-            &reservation_details.book_token,
-            &reservation_details.get_payment_id().unwrap(),
-        )
-        .await?;
-    Ok(())
+    let matching_reservation = get_matching_reservation(&reservations, time, table_type, time_mode);
+    match matching_reservation {
+        Some(r) => {
+            // Get the reservation details to book. For now, let's assume if we got a reservation slot
+            // that this function won't fail.
+            let reservation_details = resy_client
+                .get_reservation_details(&r, date, party_size)
+                .await?;
+            // This naively also assumes that the reservation will book properly for now.
+            let booking_res = resy_client
+                .book_restaurant(
+                    &reservation_details.book_token,
+                    &reservation_details.get_payment_id().unwrap(),
+                )
+                .await;
+            match booking_res {
+                Ok(b) => Ok(b),
+                Err(e) => Err(e),
+            }
+        }
+        None => Err(anyhow!(
+            "No reservation was found for the given time and time_mode"
+        )),
+    }
 }
 
 #[tokio::main]
@@ -166,13 +223,46 @@ async fn main() -> anyhow::Result<()> {
 
     resy_client.load_config().await?;
 
+    let requested_time = NaiveTime::parse_from_str(&cli.time, "%H:%M").unwrap();
+
     match &cli.command {
         Commands::Automatic {
             retry_count,
             retry_delay,
-            reservation_time_mode,
         } => {
             println!("User requested automatic mode");
+            for i in 0..*retry_count {
+                println!(
+                    "On try {} out ouf {} to book a reservation.",
+                    i + 1,
+                    retry_count
+                );
+                let reservation_attempt = attempt_reservation(
+                    &resy_client,
+                    &cli.restaurant_id,
+                    &date,
+                    &requested_time,
+                    cli.party_size,
+                    &cli.table_type,
+                    &cli.reservation_time_mode,
+                )
+                .await;
+                match reservation_attempt {
+                    Ok(_) => {
+                        println!("Booked your reservation, you should be receiving a confirmation email from Resy!");
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        println!(
+                            "Encountered error on this attempt: {}, retrying in {} seconds",
+                            e, retry_delay
+                        );
+                        if i < *retry_count - 1 {
+                            async_std::task::sleep(Duration::from_secs(*retry_delay as u64)).await;
+                        }
+                    }
+                }
+            }
         }
         Commands::OneShot => {
             println!("User requested one-shot mode");
@@ -180,9 +270,10 @@ async fn main() -> anyhow::Result<()> {
                 &resy_client,
                 &cli.restaurant_id,
                 &date,
-                &NaiveTime::parse_from_str(&cli.time, "%H:%M").unwrap(),
+                &requested_time,
                 cli.party_size,
                 &cli.table_type,
+                &cli.reservation_time_mode,
             )
             .await?;
         }
