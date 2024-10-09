@@ -2,20 +2,14 @@ use std::fmt::Display;
 use std::time::Duration;
 
 use anyhow::anyhow;
-use chrono::{NaiveDate, NaiveTime};
+use chrono::{Days, NaiveDate, NaiveTime};
 use clap::{builder::PossibleValue, command, Parser, Subcommand, ValueEnum};
 use libresy::resy_data::ReservationSlot;
 use libresy::{ResyClient, ResyClientBuilder};
 
 #[derive(Parser)]
-#[command(author, version, about, long_about = None)]
+#[command(author, version, about)]
 struct Cli {
-    /// Country you want to search for restaurants in.
-    #[arg(long, env, default_value = "US")]
-    country: String,
-    /// City you want to search for restaurants in.
-    #[arg(short, long, env)]
-    city: String,
     /// Resy ID of the restaurant you are trying to reserve. See documentation for
     /// finding this value.
     #[arg(long = "id")]
@@ -101,6 +95,10 @@ enum Commands {
         /// Controls how long the program will wait between retry attempts in seconds.
         #[arg(long, env, default_value_t = 1)]
         retry_delay: u16,
+        /// How many days should be added to the reservation date to determine the real
+        /// reservation date. Useful if running the tool with the default date.
+        #[arg(long, env)]
+        offset: Option<u8>,
     },
 }
 
@@ -215,7 +213,7 @@ async fn attempt_reservation(
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
-    let date = get_default_date(cli.date);
+    let mut date = get_default_date(cli.date);
 
     let builder = ResyClientBuilder::new(cli.api_key, cli.auth_token);
 
@@ -224,13 +222,18 @@ async fn main() -> anyhow::Result<()> {
     resy_client.load_config().await?;
 
     let requested_time = NaiveTime::parse_from_str(&cli.time, "%H:%M").unwrap();
+    println!("Checking for reservations on {:?}", date);
 
     match &cli.command {
         Commands::Automatic {
             retry_count,
             retry_delay,
+            offset,
         } => {
             println!("User requested automatic mode");
+            if let Some(offset) = offset {
+                date = date.checked_add_days(Days::new(*offset as u64)).unwrap();
+            }
             for i in 0..*retry_count {
                 println!(
                     "On try {} out ouf {} to book a reservation.",
