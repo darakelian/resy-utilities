@@ -1,4 +1,9 @@
-use std::{collections::HashMap, fs::{self, File}, io::BufReader, str::FromStr};
+use std::{
+    collections::HashMap,
+    fs::{self, File},
+    io::BufReader,
+    str::FromStr,
+};
 
 use chrono::NaiveDate;
 use directories::ProjectDirs;
@@ -63,7 +68,7 @@ impl ResyClient {
                 let text = r.text().await?;
                 return Ok(text);
             }
-            Err(e) => Err(e.into())
+            Err(e) => Err(e.into()),
         }
     }
 
@@ -88,7 +93,8 @@ impl ResyClient {
             } else {
                 let results_json = self.get_configs_from_api().await?;
                 fs::write(configs_path, &results_json).expect("Unable to save restaurant configs");
-                let results: Vec<RestaurantCityConfig> = serde_json::from_str(&results_json).unwrap();
+                let results: Vec<RestaurantCityConfig> =
+                    serde_json::from_str(&results_json).unwrap();
                 self.restaurants.extend(results);
             }
         }
