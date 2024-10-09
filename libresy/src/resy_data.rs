@@ -3,21 +3,14 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct RestaurantCityConfig {
-    code: String,
     country_code: String,
-    country_id: u16,
-    country_name: String,
-    id: u32,
     pub latitude: f32,
     pub longitude: f32,
-    name: String,
-    radius: u16,
-    time_zone: String,
     url_slug: String,
 }
 
 impl RestaurantCityConfig {
-    pub fn is_match(&self, city: &String, country: &String) -> bool {
+    pub fn is_match(&self, city: &str, country: &str) -> bool {
         let country_match = self.country_code.eq_ignore_ascii_case(country);
         let city_match = self
             .url_slug
@@ -26,13 +19,6 @@ impl RestaurantCityConfig {
 
         country_match && city_match
     }
-}
-
-/// Contains search params for narrowing down availability on a particular time
-#[derive(Debug, Deserialize)]
-pub struct SlotFilter {
-    day: String,
-    party_size: u16,
 }
 
 #[derive(Debug, Deserialize, Clone, Serialize)]
@@ -60,21 +46,19 @@ pub struct RestaurantSearchRequest {
 }
 
 impl RestaurantSearchRequest {
-    pub fn new(availability: bool, geo: &GeoFilter, query: &String) -> RestaurantSearchRequest {
+    pub fn new(availability: bool, geo: &GeoFilter, query: &str) -> RestaurantSearchRequest {
         RestaurantSearchRequest {
             availability,
             geo: geo.clone(),
-            query: query.clone(),
+            query: query.to_owned(),
         }
     }
 }
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct RestaurantSearchResult {
-    locality: String,
     #[serde(rename = "objectID")]
     pub object_id: String,
-    url_slug: String,
     pub name: String,
 }
 
@@ -140,7 +124,6 @@ struct DetailsUser {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct BookToken {
-    date_expires: String,
     pub value: String,
 }
 
@@ -154,16 +137,6 @@ impl ReservationDetails {
     /// Tries to get the first payment ID a user has. A user is not guaranteed to
     /// have any payment methods on file.
     pub fn get_payment_id(&self) -> Option<PaymentMethod> {
-        match self.user.payment_methods.first() {
-            Some(p) => Some(p.clone()),
-            None => None,
-        }
+        self.user.payment_methods.first().cloned()
     }
-}
-
-#[derive(Debug, Deserialize)]
-pub struct Booking {
-    resy_token: String,
-    reservation_id: u32,
-    venue_opt_in: bool,
 }

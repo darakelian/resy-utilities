@@ -6,10 +6,9 @@ use reqwest::{
     Client,
 };
 use resy_data::{
-    BookToken, Booking, GeoFilter, PaymentMethod, ReservationDetails, ReservationDetailsRequest,
+    BookToken, GeoFilter, PaymentMethod, ReservationDetails, ReservationDetailsRequest,
     ReservationSlot, RestaurantCityConfig, RestaurantSearchRequest, RestaurantSearchResult,
 };
-use serde::de::value;
 
 pub mod resy_data;
 
@@ -72,8 +71,8 @@ impl ResyClient {
     /// restaurant later.
     pub fn get_restaurant_city_config(
         &self,
-        city: &String,
-        country: &String,
+        city: &str,
+        country: &str,
     ) -> Option<RestaurantCityConfig> {
         for restaurant_city_config in self.restaurants.iter() {
             if restaurant_city_config.is_match(city, country) {
@@ -88,7 +87,7 @@ impl ResyClient {
     pub async fn find_restaurant_by_name(
         &self,
         city_config: &RestaurantCityConfig,
-        name: &String,
+        name: &str,
     ) -> anyhow::Result<Option<RestaurantSearchResult>> {
         let geo_filter = GeoFilter::new(city_config.latitude, city_config.longitude, u16::MAX);
         let restaurant_search_params = RestaurantSearchRequest::new(false, &geo_filter, name);
@@ -165,7 +164,7 @@ impl ResyClient {
         &self,
         book_token: &BookToken,
         payment: &PaymentMethod,
-    ) -> anyhow::Result<Booking> {
+    ) -> anyhow::Result<()> {
         // Build the form data for the booking request
         let mut params = HashMap::new();
         params.insert("book_token", book_token.value.clone());
@@ -179,7 +178,7 @@ impl ResyClient {
         let res = self.client.post(RESY_BOOK_URL).form(&params).send().await;
 
         match res {
-            Ok(r) => Ok(r.json().await?),
+            Ok(_) => Ok(()),
             Err(e) => Err(e.into()),
         }
     }
@@ -196,8 +195,8 @@ pub struct ResyClientBuilder {
 impl ResyClientBuilder {
     pub fn new(api_key: String, auth_key: String) -> ResyClientBuilder {
         ResyClientBuilder {
-            api_key: api_key,
-            auth_key: auth_key,
+            api_key,
+            auth_key,
             no_cache: false,
             strict_match: false,
         }
@@ -227,7 +226,7 @@ impl ResyClientBuilder {
 
         headers.insert(AUTHORIZATION, api_header);
         headers.insert(RESY_AUTH_TOKEN_HEADER, auth_key_header);
-        headers.insert("User-Agent", HeaderValue::from_static(&USER_AGENT));
+        headers.insert("User-Agent", HeaderValue::from_static(USER_AGENT));
 
         ResyClient {
             no_cache: self.no_cache,

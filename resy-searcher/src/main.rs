@@ -1,5 +1,5 @@
 use anyhow::anyhow;
-use chrono::{DateTime, Datelike, NaiveDate};
+use chrono::NaiveDate;
 use clap::{CommandFactory, Parser};
 use libresy::ResyClientBuilder;
 
@@ -50,7 +50,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Since restaurant name can be multiple positional args, check that the user
     // actually provided them
-    if cli.restaurant_names.len() == 0 {
+    if cli.restaurant_names.is_empty() {
         let _ = Cli::command().print_help();
         return Err(anyhow!("You must provide a restaurant name to search for!"));
     }
@@ -88,7 +88,7 @@ async fn main() -> anyhow::Result<()> {
             let reservations = resy_client
                 .get_reservations(&r.object_id, &date, cli.party_size)
                 .await?;
-            if reservations.len() > 0 {
+            if !reservations.is_empty() {
                 println!(
                     "Found the following reservations at {} (Resy ID = {})",
                     r.name, r.object_id

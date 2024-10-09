@@ -4,7 +4,7 @@ use std::time::Duration;
 use anyhow::anyhow;
 use chrono::{NaiveDate, NaiveTime};
 use clap::{builder::PossibleValue, command, Parser, Subcommand, ValueEnum};
-use libresy::resy_data::{Booking, ReservationSlot};
+use libresy::resy_data::ReservationSlot;
 use libresy::{ResyClient, ResyClientBuilder};
 
 #[derive(Parser)]
@@ -120,7 +120,7 @@ fn get_default_date(provided_date: Option<String>) -> NaiveDate {
 
 /// Checks if the reservation slot matches the user's requested table type. If the
 /// user hasn't provided a preference, this will always return true.
-fn table_type_matches(slot_type: &String, requested_table_type: &Option<String>) -> bool {
+fn table_type_matches(slot_type: &str, requested_table_type: &Option<String>) -> bool {
     match requested_table_type {
         Some(r) => r.eq_ignore_ascii_case(slot_type),
         None => true,
@@ -129,7 +129,7 @@ fn table_type_matches(slot_type: &String, requested_table_type: &Option<String>)
 
 /// Finds a reservation that best matches the time and time_mode provided.
 fn get_matching_reservation(
-    reservations: &Vec<ReservationSlot>,
+    reservations: &[ReservationSlot],
     time: &NaiveTime,
     table_type: &Option<String>,
     time_mode: &ReservationTimeMode,
@@ -174,7 +174,7 @@ async fn attempt_reservation(
     party_size: u8,
     table_type: &Option<String>,
     time_mode: &ReservationTimeMode,
-) -> anyhow::Result<Booking> {
+) -> anyhow::Result<()> {
     // Using the resy_id, get the reservations available
     let reservations = resy_client
         .get_reservations(restaurant_id, date, party_size)
