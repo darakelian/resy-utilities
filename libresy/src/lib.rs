@@ -66,7 +66,7 @@ impl ResyClient {
         match res {
             Ok(r) => {
                 let text = r.text().await?;
-                return Ok(text);
+                Ok(text)
             }
             Err(e) => Err(e.into()),
         }
