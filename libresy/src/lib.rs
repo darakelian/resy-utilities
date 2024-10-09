@@ -1,6 +1,7 @@
-use std::{collections::HashMap, str::FromStr};
+use std::{collections::HashMap, fs::{self, File}, io::BufReader, str::FromStr};
 
 use chrono::NaiveDate;
+use directories::ProjectDirs;
 use reqwest::{
     header::{HeaderMap, HeaderValue, AUTHORIZATION},
     Client,
@@ -51,19 +52,46 @@ impl ResyClient {
         ResyClientBuilder::default()
     }
 
-    /// Loads the restaurant city configs from Resy. This is all cities in the Resy network
-    /// that we can search for restaurants later.
-    /// TODO: Make this use a caching mechanism?
-    pub async fn load_config(&mut self) -> anyhow::Result<()> {
-        let mapping_body = self
+    async fn get_configs_from_api(&mut self) -> anyhow::Result<String> {
+        let res = self
             .client
             .get(format!("{}{}", RESY_LOCATION_BASE, RESY_CONFIG_URL))
             .send()
-            .await?
-            .text()
-            .await?;
-        let results: Vec<RestaurantCityConfig> = serde_json::from_str(&mapping_body)?;
-        self.restaurants.extend(results);
+            .await;
+        match res {
+            Ok(r) => {
+                let text = r.text().await?;
+                return Ok(text);
+            }
+            Err(e) => Err(e.into())
+        }
+    }
+
+    /// Loads the restaurant city configs from Resy. This is all cities in the Resy network
+    /// that we can search for restaurants later.
+    pub async fn load_config(&mut self) -> anyhow::Result<()> {
+        if self.no_cache {
+            let results_json = self.get_configs_from_api().await?;
+            let results: Vec<RestaurantCityConfig> = serde_json::from_str(&results_json).unwrap();
+            self.restaurants.extend(results);
+            return Ok(());
+        }
+        if let Some(proj_dirs) = ProjectDirs::from("xyz", "vec3d", "resy-reserver") {
+            fs::create_dir_all(proj_dirs.cache_dir()).expect("Unable to create cache dir");
+            //let results_json = self.load_configs_from_api().await?;
+            //let results :Vec<RestaurantCityConfig> = serde_json::from_str
+            let configs_path = proj_dirs.cache_dir().join("restaurants.json");
+            if configs_path.exists() {
+                let reader = BufReader::new(File::open(configs_path)?);
+                let results: Vec<RestaurantCityConfig> = serde_json::from_reader(reader)?;
+                self.restaurants.extend(results);
+            } else {
+                let results_json = self.get_configs_from_api().await?;
+                fs::write(configs_path, &results_json).expect("Unable to save restaurant configs");
+                let results: Vec<RestaurantCityConfig> = serde_json::from_str(&results_json).unwrap();
+                self.restaurants.extend(results);
+            }
+        }
         Ok(())
     }
 

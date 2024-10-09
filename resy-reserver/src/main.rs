@@ -10,6 +10,9 @@ use libresy::{ResyClient, ResyClientBuilder};
 #[derive(Parser)]
 #[command(author, version, about)]
 struct Cli {
+    /// Disables use of the restaurant configuration cache, resulting in a network call.
+    #[arg(long, env, action)]
+    no_cache: bool,
     /// Resy ID of the restaurant you are trying to reserve. See documentation for
     /// finding this value.
     #[arg(long = "id")]

@@ -57,7 +57,10 @@ async fn main() -> anyhow::Result<()> {
 
     let date = get_default_date(cli.date);
 
-    let builder = ResyClientBuilder::new(cli.api_key, cli.auth_token);
+    let mut builder = ResyClientBuilder::new(cli.api_key, cli.auth_token);
+    if cli.no_cache {
+        builder = builder.no_cache();
+    }
 
     let mut resy_client = builder.build();
 
