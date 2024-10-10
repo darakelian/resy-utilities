@@ -2,7 +2,7 @@ use std::fmt::Display;
 use std::time::Duration;
 
 use anyhow::anyhow;
-use chrono::{Days, NaiveDate, NaiveTime};
+use chrono::{Days, Local, NaiveDate, NaiveTime};
 use clap::{builder::PossibleValue, command, Parser, Subcommand, ValueEnum};
 use libresy::resy_data::ReservationSlot;
 use libresy::{ResyClient, ResyClientBuilder};
@@ -102,6 +102,9 @@ enum Commands {
         /// reservation date. Useful if running the tool with the default date.
         #[arg(long, env)]
         offset: Option<u8>,
+        /// Time reservations become available.
+        #[arg(short, long, env, default_value = "00:00")]
+        start_time: String,
     },
 }
 
@@ -232,10 +235,30 @@ async fn main() -> anyhow::Result<()> {
             retry_count,
             retry_delay,
             offset,
+            start_time,
         } => {
             println!("User requested automatic mode");
             if let Some(offset) = offset {
                 date = date.checked_add_days(Days::new(*offset as u64)).unwrap();
+            }
+            let now_date = Local::now().date_naive();
+            let now = Local::now().time();
+            let start_time = NaiveTime::parse_from_str(&start_time, "%H:%M")
+                .expect("Invalid start_time provided");
+            let delay = if start_time < now {
+                // Need to use NaiveDateTime instead of just NaiveTime to get real delay, assuming that
+                // the start time really means wait until the next day.
+                let start_date = now_date
+                    .checked_add_days(Days::new(1))
+                    .unwrap()
+                    .and_time(start_time);
+                start_date - Local::now().naive_local()
+            } else {
+                start_time - now
+            };
+            println!("Waiting {} to start", delay.num_seconds());
+            if delay.num_seconds() > 0 {
+                async_std::task::sleep(Duration::from_secs(delay.num_seconds() as u64)).await;
             }
             for i in 0..*retry_count {
                 println!(
@@ -286,4 +309,90 @@ async fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{env, fs::File, io::BufReader};
+
+    use serde_json::Value;
+
+    use super::*;
+
+    #[test]
+    fn test_reservation_preferences() {
+        let cache_dir = env::current_dir().unwrap().join("src").join("test_data");
+
+        let test_data_path = cache_dir.join("test_find.json");
+        let reader =
+            BufReader::new(File::open(test_data_path).expect("Unable to open test data file"));
+        let data: Value = serde_json::from_reader(reader).expect("Unable to parse file");
+        let reservations: Vec<ReservationSlot> =
+            serde_json::from_value(data["results"]["venues"][0]["slots"].clone()).unwrap();
+
+        let valid_time = NaiveTime::parse_from_str("12:30", "%H:%M").unwrap();
+        let invalid_time = NaiveTime::parse_from_str("12:46", "%H:%M").unwrap();
+        // Test exact match
+        {
+            let slot_match = get_matching_reservation(
+                &reservations,
+                &valid_time,
+                &None,
+                &ReservationTimeMode::Exact,
+            );
+            assert!(slot_match.is_some());
+            let slot = slot_match.unwrap();
+            assert_eq!(slot.date.to_datetime().time(), valid_time);
+        }
+        // Test earlier
+        {
+            // Test if you request a time that DOES exist, you get that
+            let slot_match = get_matching_reservation(
+                &reservations,
+                &valid_time,
+                &None,
+                &ReservationTimeMode::Earlier,
+            );
+            assert!(slot_match.is_some());
+            let slot = slot_match.unwrap();
+            assert_eq!(slot.date.to_datetime().time(), valid_time);
+
+            // Test if time is later than a slot, you get the earlier one
+            let slot_match = get_matching_reservation(
+                &reservations,
+                &invalid_time,
+                &None,
+                &ReservationTimeMode::Earlier,
+            );
+            assert!(slot_match.is_some());
+            let slot = slot_match.unwrap();
+            let expected_time = NaiveTime::parse_from_str("12:45", "%H:%M").unwrap();
+            assert_eq!(slot.date.to_datetime().time(), expected_time);
+        }
+        // Test later
+        {
+            // Test if you request a time that DOES exist, you get that
+            let slot_match = get_matching_reservation(
+                &reservations,
+                &valid_time,
+                &None,
+                &ReservationTimeMode::Later,
+            );
+            assert!(slot_match.is_some());
+            let slot = slot_match.unwrap();
+            assert_eq!(slot.date.to_datetime().time(), valid_time);
+
+            // Test if time is earlier than a slot, you get the later one
+            let slot_match = get_matching_reservation(
+                &reservations,
+                &invalid_time,
+                &None,
+                &ReservationTimeMode::Later,
+            );
+            assert!(slot_match.is_some());
+            let slot = slot_match.unwrap();
+            let expected_time = NaiveTime::parse_from_str("13:00", "%H:%M").unwrap();
+            assert_eq!(slot.date.to_datetime().time(), expected_time);
+        }
+    }
 }

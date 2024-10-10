@@ -1166,6 +1166,7 @@ dependencies = [
  "clap",
  "clap-verbosity-flag",
  "libresy",
+ "serde_json",
  "tokio",
 ]
 
