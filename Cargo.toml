@@ -1,5 +1,5 @@
 [workspace]
-members = ["libresy", "resy-reserver", "resy-searcher"]
+members = ["libresy", "resy-notifies", "resy-reserver", "resy-searcher"]
 resolver = "2"
 
 [workspace.package]

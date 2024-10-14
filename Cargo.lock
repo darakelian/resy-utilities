@@ -1157,6 +1157,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "resy-notifies"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap",
+ "clap-verbosity-flag",
+ "libresy",
+ "tokio",
+]
+
+[[package]]
 name = "resy-reserver"
 version = "0.1.0"
 dependencies = [
