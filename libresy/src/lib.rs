@@ -16,7 +16,6 @@ use resy_data::{
     ReservationSlot, RestaurantCityConfig, RestaurantSearchRequest, RestaurantSearchResult,
     ResyNotification, ResyNotificationResults,
 };
-use serde_json::Value;
 
 pub mod resy_data;
 
@@ -234,6 +233,11 @@ impl ResyClient {
         }
     }
 
+    /// Creates or updates notifications. Resy does not support the UPDATE HTTP verb and
+    /// instead "updating" a notification requires sending the same POST request as creating
+    /// a notification but with whatever the new fields are supposed to be. It seems like
+    /// you can only have one notification for a day/restaurant at a time, their backend
+    /// handles the de-duplication.
     pub async fn create_notification(&self, notification: &ResyNotification) -> anyhow::Result<()> {
         let mut params = HashMap::new();
         params.insert(
@@ -244,6 +248,25 @@ impl ResyClient {
             .client
             .post(RESY_NOTIFICATION_URL)
             .form(&params)
+            .send()
+            .await;
+        match response {
+            Ok(_) => Ok(()),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    pub async fn delete_notification(&self, notification: &ResyNotification) -> anyhow::Result<()> {
+        let response = self
+            .client
+            .delete(RESY_NOTIFICATION_URL)
+            .query(&["venue_id", &notification.specs.venue_id.to_string()])
+            .query(&["day", &notification.specs.day])
+            .query(&["num_seats", &notification.specs.party_size.to_string()])
+            .query(&[
+                "service_type_id",
+                &notification.specs.service_type_id.to_string(),
+            ])
             .send()
             .await;
         match response {

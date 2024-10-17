@@ -160,5 +160,5 @@ pub struct ResyNotification {
 
 #[derive(Debug, Deserialize)]
 pub struct ResyNotificationResults {
-    pub notify: Vec<ResyNotification>
+    pub notify: Vec<ResyNotification>,
 }
