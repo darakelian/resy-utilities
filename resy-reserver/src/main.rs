@@ -243,7 +243,7 @@ async fn main() -> anyhow::Result<()> {
             }
             let now_date = Local::now().date_naive();
             let now = Local::now().time();
-            let start_time = NaiveTime::parse_from_str(&start_time, "%H:%M")
+            let start_time = NaiveTime::parse_from_str(start_time, "%H:%M")
                 .expect("Invalid start_time provided");
             let delay = if start_time < now {
                 // Need to use NaiveDateTime instead of just NaiveTime to get real delay, assuming that
