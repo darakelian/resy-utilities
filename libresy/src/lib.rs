@@ -14,6 +14,7 @@ use reqwest::{
 use resy_data::{
     BookToken, GeoFilter, PaymentMethod, ReservationDetails, ReservationDetailsRequest,
     ReservationSlot, RestaurantCityConfig, RestaurantSearchRequest, RestaurantSearchResult,
+    ResyNotification, ResyNotificationResults,
 };
 
 pub mod resy_data;
@@ -37,6 +38,10 @@ static RESY_DETAILS_URL: &str = "https://api.resy.com/3/details";
 /// URL to book at
 static RESY_BOOK_URL: &str = "https://api.resy.com/3/book";
 
+/// URL for notify endpoints (data is sent either through query params or HTTP verbs)
+static RESY_NOTIFICATION_URL: &str = "https://api.resy.com/3/notify";
+
+/// Header to send auth-token arg as
 static RESY_AUTH_TOKEN_HEADER: &str = "X-Resy-Auth-Token";
 
 /// Date format Resy uses for sending/receiving dates in their objects.
@@ -212,6 +217,59 @@ impl ResyClient {
         let res = self.client.post(RESY_BOOK_URL).form(&params).send().await;
 
         match res {
+            Ok(_) => Ok(()),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    pub async fn get_notifications(&self) -> anyhow::Result<Vec<ResyNotification>> {
+        let response = self.client.get(RESY_NOTIFICATION_URL).send().await;
+        match response {
+            Ok(r) => {
+                let json: ResyNotificationResults = r.json().await?;
+                Ok(json.notify)
+            }
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// Creates or updates notifications. Resy does not support the UPDATE HTTP verb and
+    /// instead "updating" a notification requires sending the same POST request as creating
+    /// a notification but with whatever the new fields are supposed to be. It seems like
+    /// you can only have one notification for a day/restaurant at a time, their backend
+    /// handles the de-duplication.
+    pub async fn create_notification(&self, notification: &ResyNotification) -> anyhow::Result<()> {
+        let mut params = HashMap::new();
+        params.insert(
+            "struct_data",
+            serde_json::to_string(notification).expect("Unable to serialize notification json"),
+        );
+        let response = self
+            .client
+            .post(RESY_NOTIFICATION_URL)
+            .form(&params)
+            .send()
+            .await;
+        match response {
+            Ok(_) => Ok(()),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    pub async fn delete_notification(&self, notification: &ResyNotification) -> anyhow::Result<()> {
+        let response = self
+            .client
+            .delete(RESY_NOTIFICATION_URL)
+            .query(&["venue_id", &notification.specs.venue_id.to_string()])
+            .query(&["day", &notification.specs.day])
+            .query(&["num_seats", &notification.specs.party_size.to_string()])
+            .query(&[
+                "service_type_id",
+                &notification.specs.service_type_id.to_string(),
+            ])
+            .send()
+            .await;
+        match response {
             Ok(_) => Ok(()),
             Err(e) => Err(e.into()),
         }

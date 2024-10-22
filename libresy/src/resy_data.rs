@@ -140,3 +140,25 @@ impl ReservationDetails {
         self.user.payment_methods.first().cloned()
     }
 }
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ResyNotificationSpec {
+    pub venue_id: u32,
+    pub party_size: u8,
+    pub day: String,
+    pub time_preferred_start: String,
+    pub time_preferred_end: String,
+    pub service_type_id: u8,
+}
+
+/// Struct containing details about notifications. Used both for listing and creating
+/// notifications.
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ResyNotification {
+    pub specs: ResyNotificationSpec,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ResyNotificationResults {
+    pub notify: Vec<ResyNotification>,
+}
