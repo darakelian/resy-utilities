@@ -153,7 +153,7 @@ impl ResyClient {
     /// the given date were found.
     pub async fn get_reservations(
         &self,
-        restaurant_id: &String,
+        restaurant_id: u32,
         date: &NaiveDate,
         party_size: u8,
     ) -> anyhow::Result<Vec<ReservationSlot>> {
@@ -162,7 +162,7 @@ impl ResyClient {
             .get(RESY_FIND_URL)
             .query(&[("lat", "0")])
             .query(&[("long", "0")])
-            .query(&[("venue_id", restaurant_id)])
+            .query(&[("venue_id", &restaurant_id.to_string())])
             .query(&[("day", date.format(RESY_DATE_FORMAT).to_string())])
             .query(&[("party_size", &party_size.to_string())])
             .send()

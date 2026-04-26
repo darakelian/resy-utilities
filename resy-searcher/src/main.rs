@@ -85,16 +85,16 @@ async fn main() -> anyhow::Result<()> {
     match restaurant {
         Some(r) => {
             if cli.info_only {
-                println!("Restaurant Name: {}, Resy ID: {}", r.name, r.object_id);
+                println!("Restaurant Name: {}, Resy ID: {}", r.name, r.id.resy);
                 return Ok(());
             }
             let reservations = resy_client
-                .get_reservations(&r.object_id, &date, cli.party_size)
+                .get_reservations(r.id.resy, &date, cli.party_size)
                 .await?;
             if !reservations.is_empty() {
                 println!(
                     "Found the following reservations at {} (Resy ID = {})",
-                    r.name, r.object_id
+                    r.name, r.id.resy
                 );
                 // Print the reservations
                 for reservation in reservations.iter() {
@@ -103,7 +103,7 @@ async fn main() -> anyhow::Result<()> {
             } else {
                 println!(
                     "There are no reservations at {} (Resy ID = {}) on {} for a party size of {}",
-                    r.name, r.object_id, date, cli.party_size
+                    r.name, r.id.resy, date, cli.party_size
                 );
             }
         }

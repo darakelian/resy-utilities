@@ -55,10 +55,14 @@ impl RestaurantSearchRequest {
     }
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Id {
+    pub resy: u32,
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct RestaurantSearchResult {
-    #[serde(rename = "objectID")]
-    pub object_id: String,
+    pub id: Id,
     pub name: String,
 }
 

@@ -16,7 +16,7 @@ struct Cli {
     /// Resy ID of the restaurant you are trying to reserve. See documentation for
     /// finding this value.
     #[arg(long = "id")]
-    restaurant_id: String,
+    restaurant_id: u32,
     #[command(flatten)]
     verbose: clap_verbosity_flag::Verbosity,
     #[arg(short = 'k', long, env, hide_env_values = true)]
@@ -172,7 +172,7 @@ fn get_matching_reservation(
 
 async fn attempt_reservation(
     resy_client: &ResyClient,
-    restaurant_id: &String,
+    restaurant_id: u32,
     date: &NaiveDate,
     time: &NaiveTime,
     party_size: u8,
@@ -268,7 +268,7 @@ async fn main() -> anyhow::Result<()> {
                 );
                 let reservation_attempt = attempt_reservation(
                     &resy_client,
-                    &cli.restaurant_id,
+                    cli.restaurant_id,
                     &date,
                     &requested_time,
                     cli.party_size,
@@ -297,7 +297,7 @@ async fn main() -> anyhow::Result<()> {
             println!("User requested one-shot mode");
             attempt_reservation(
                 &resy_client,
-                &cli.restaurant_id,
+                cli.restaurant_id,
                 &date,
                 &requested_time,
                 cli.party_size,
