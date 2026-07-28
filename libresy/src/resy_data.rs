@@ -38,17 +38,27 @@ impl GeoFilter {
     }
 }
 
+#[derive(Debug, Deserialize, Clone, Serialize)]
+pub struct SlotFilter {
+    day: String,
+    party_size: u8,
+}
+
+impl SlotFilter {
+    pub fn new(day: String, party_size: u8) -> SlotFilter {
+        SlotFilter { day, party_size }
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct RestaurantSearchRequest {
-    availability: bool,
     geo: GeoFilter,
     query: String,
 }
 
 impl RestaurantSearchRequest {
-    pub fn new(availability: bool, geo: &GeoFilter, query: &str) -> RestaurantSearchRequest {
+    pub fn new(geo: &GeoFilter, query: &str) -> RestaurantSearchRequest {
         RestaurantSearchRequest {
-            availability,
             geo: geo.clone(),
             query: query.to_owned(),
         }

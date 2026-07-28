@@ -17,6 +17,8 @@ use resy_data::{
     ResyNotification, ResyNotificationResults,
 };
 
+use crate::resy_data::SlotFilter;
+
 pub mod resy_data;
 
 /// Resy apparently checks if the user-agent is a "browser" agent so let's pretend to be Firefox
@@ -129,7 +131,7 @@ impl ResyClient {
         name: &str,
     ) -> anyhow::Result<Option<RestaurantSearchResult>> {
         let geo_filter = GeoFilter::new(city_config.latitude, city_config.longitude, u16::MAX);
-        let restaurant_search_params = RestaurantSearchRequest::new(false, &geo_filter, name);
+        let restaurant_search_params = RestaurantSearchRequest::new(&geo_filter, name);
 
         let res = self
             .client
@@ -307,17 +309,17 @@ impl ResyClientBuilder {
     pub fn build(self) -> ResyClient {
         let mut headers = HeaderMap::new();
 
-        let mut api_header =
-            HeaderValue::from_str(&format!("ResyAPI api_key=\"{}\"", self.api_key))
-                .expect("Key invalid HTTP header value");
-        api_header.set_sensitive(true);
-
         let mut auth_key_header =
-            HeaderValue::from_str(&self.auth_key).expect("Key invalid HTTP header value");
+            HeaderValue::from_str(&format!("ResyAPI api_key=\"{}\"", self.auth_key))
+                .expect("Key invalid HTTP header value");
         auth_key_header.set_sensitive(true);
 
-        headers.insert(AUTHORIZATION, api_header);
-        headers.insert(RESY_AUTH_TOKEN_HEADER, auth_key_header);
+        let mut api_key_header =
+            HeaderValue::from_str(&self.api_key).expect("Key invalid HTTP header value");
+        api_key_header.set_sensitive(true);
+
+        headers.insert(AUTHORIZATION, auth_key_header);
+        headers.insert(RESY_AUTH_TOKEN_HEADER, api_key_header);
         headers.insert("User-Agent", HeaderValue::from_static(USER_AGENT));
 
         ResyClient {
